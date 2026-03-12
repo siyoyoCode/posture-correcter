@@ -1,21 +1,48 @@
-import Camera_helper.py
+#!/usr/bin/env python3
+
+import time
+from gpiozero import Button
+from rpi_capture import capture_image, send_to_cloud, get_feedback, speak_feedback, Camera, CAPTURE_DURATION, CAPTURE_FPS, BUTTON_PIN
+
+# ── Main loop ──────────────────────────────────────────────────────────────────
+
+def main():
+    button = Button(BUTTON_PIN, pull_up=True)
+    interval = 1.0 / CAPTURE_FPS
+
+    print("[RPi] Ready. Press the button to start an exercise session.")
+    speak_feedback("Ready. Press the button to begin.")
+
+    with Camera() as cam:
+        while True:
+            # ── Wait for button press ──────────────────────────────────────
+            button.wait_for_press()
+            print("[RPi] Button pressed — starting session!")
+            speak_feedback("Starting. Go!")
+
+            # ── Capture + send frames for CAPTURE_DURATION seconds ────────
+            session_start = time.time()
+            while time.time() - session_start < CAPTURE_DURATION:
+                t0 = time.time()
+
+                image_b64 = capture_image(cam)
+                send_to_cloud(image_b64)
+
+                elapsed = time.time() - t0
+                time.sleep(max(0, interval - elapsed))
+
+            print("[RPi] Session complete — fetching feedback…")
+            speak_feedback("Session complete. Getting your feedback.")
+
+            # ── Fetch and speak feedback ───────────────────────────────────
+            # Small delay to let the backend finish processing the last frame
+            time.sleep(1.5)
+            feedback = get_feedback()
+            speak_feedback(feedback)
+
+            print("[RPi] Ready for next session.")
+            time.sleep(1)
 
 
-while True:
-    print("Waiting for button...")
-
-    Camera_helper.wait_for_press()
-
-    print("Recording workout")
-
-    images = Camera_helper.capture_images()
-
-    print("Sending to cloud")
-
-    suggestion = Camera_helper.send_to_cloud(images)
-
-    image_capture_send_eval.Camera_helper.delete_images(images)
-
-    print("Feedback:", suggestion)
-
-    image_capture_send_eval.Camera_helper.speak_feedback(suggestion)
+if __name__ == "__main__":
+    main()
