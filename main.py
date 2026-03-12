@@ -14,8 +14,8 @@ while True:
 
     suggestion = Camera_helper.send_to_cloud(images)
 
-    Camera_helper.delete_images(images)
+    image_capture_send_eval.Camera_helper.delete_images(images)
 
     print("Feedback:", suggestion)
 
-    Camera_helper.speak_feedback(suggestion)
+    image_capture_send_eval.Camera_helper.speak_feedback(suggestion)
