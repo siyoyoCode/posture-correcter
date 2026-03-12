@@ -22,18 +22,12 @@ def delete_images(images):
     for img in images:
         os.remove(img)
 
-def capture_images():
-    images = []
+def capture_image():
 
-    start = time.time()
+    filename = f"frame_{int(time.time())}.jpg"
+    picam.capture_file(filename)
 
-    while time.time() - start < 30:
-        filename = f"frame_{int(time.time())}.jpg"
-        picam.capture_file(filename)
-        images.append(filename)
-        time.sleep(0.1)   # 1 frame per second
-
-    return images
+    return filename
 
 def speak_feedback(text):
     os.system(f'espeak "{text}"')
