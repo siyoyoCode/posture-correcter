@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RPi Vision Feed</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel: #111118;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #3ecf8e;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --danger: #f87171;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+  }
+
+  header {
+    padding: 1.25rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    background: var(--panel);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  .status-dot.live {
+    background: var(--accent2);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(62,207,142,0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(62,207,142,0); }
+    100% { box-shadow: 0 0 0 0 rgba(62,207,142,0); }
+  }
+
+  .status-label { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .frame-count { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
+  .frame-count strong { color: var(--accent); }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 0;
+    height: calc(100vh - 60px);
+  }
+
+  /* ── Camera feed ── */
+  .feed-panel {
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: #050508;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #camera-feed {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .feed-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+
+  .timestamp { color: var(--accent2); }
+
+  .no-feed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--muted);
+  }
+  .no-feed svg { opacity: 0.3; }
+  .no-feed p { font-size: 0.8rem; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--panel);
+  }
+
+  .sidebar-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sidebar-header .badge {
+    background: var(--accent);
+    color: white;
+    font-size: 0.6rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 99px;
+    font-weight: 600;
+  }
+
+  #responses {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    scroll-behavior: smooth;
+  }
+
+  #responses::-webkit-scrollbar { width: 4px; }
+  #responses::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .response-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    animation: slideIn 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .response-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    opacity: 0.6;
+  }
+
+  .response-item.new::before { background: var(--accent2); opacity: 1; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .response-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.4rem;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .response-meta .frame-num { color: var(--accent); font-weight: 600; }
+
+  .response-text { color: var(--text); }
+
+  /* ── Controls ── */
+  .controls {
+    padding: 0.75rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .config-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .config-row label { width: 90px; }
+
+  .config-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 0.3rem 0.5rem;
+    font-family: inherit;
+    font-size: 0.7rem;
+  }
+
+  .config-row input:focus { outline: none; border-color: var(--accent); }
+
+  .btn-row { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+
+  button {
+    flex: 1;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button:hover { opacity: 0.85; }
+
+  #btn-start { background: var(--accent); color: white; }
+  #btn-stop  { background: var(--border); color: var(--muted); }
+  #btn-clear { background: transparent; border: 1px solid var(--border); color: var(--muted); flex: 0 0 auto; padding: 0.5rem 0.75rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">RPi<span>Vision</span></div>
+  <div class="status-dot" id="status-dot"></div>
+  <div class="status-label" id="status-label">idle</div>
+  <div class="frame-count">frames: <strong id="frame-num">0</strong></div>
+</header>
+
+<main>
+  <div class="feed-panel">
+    <div class="no-feed" id="no-feed">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+      </svg>
+      <p>Waiting for RPi stream…</p>
+    </div>
+    <img id="camera-feed" alt="Camera feed" style="display:none"/>
+    <div class="feed-overlay">
+      <span class="timestamp" id="ts">--:--:--</span>
+      <span id="resolution">--</span>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-header">
+      Claude responses
+      <span class="badge" id="response-count">0</span>
+    </div>
+
+    <div id="responses">
+      <div class="response-item" style="opacity:0.4; border-style: dashed;">
+        <div class="response-meta"><span>System</span></div>
+        <div class="response-text">Connect the RPi and start the server to see live analysis here.</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="config-row">
+        <label>Server URL</label>
+        <input id="server-url" type="text" value="http://localhost:5000"/>
+      </div>
+      <div class="config-row">
+        <label>Poll interval</label>
+        <input id="poll-interval" type="number" value="2000" min="500" max="30000"/>
+        <span>ms</span>
+      </div>
+      <div class="btn-row">
+        <button id="btn-start">▶ Start</button>
+        <button id="btn-stop">■ Stop</button>
+        <button id="btn-clear">✕</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  let pollTimer = null;
+  let responseCount = 0;
+  let lastFrame = 0;
+
+  const serverUrl   = () => document.getElementById('server-url').value.replace(/\/$/, '');
+  const pollMs      = () => parseInt(document.getElementById('poll-interval').value) || 2000;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const dot         = document.getElementById('status-dot');
+  const statusLabel = document.getElementById('status-label');
+  const frameNum    = document.getElementById('frame-num');
+  const ts          = document.getElementById('ts');
+  const feedImg     = document.getElementById('camera-feed');
+  const noFeed      = document.getElementById('no-feed');
+  const responsesEl = document.getElementById('responses');
+  const respCount   = document.getElementById('response-count');
+
+  // ── Poll server health + latest frame ─────────────────────────────────────
+  async function poll() {
+    try {
+      const r = await fetch(`${serverUrl()}/health`, { signal: AbortSignal.timeout(3000) });
+      const data = await r.json();
+
+      setStatus('live');
+      frameNum.textContent = data.frames_received;
+      ts.textContent = new Date().toLocaleTimeString();
+
+      // Bust cache to reload latest frame shown by /snapshot endpoint
+      if (data.frames_received !== lastFrame) {
+        lastFrame = data.frames_received;
+        feedImg.src = `${serverUrl()}/snapshot?t=${Date.now()}`;
+        feedImg.style.display = 'block';
+        noFeed.style.display  = 'none';
+      }
+    } catch {
+      setStatus('error');
+    }
+  }
+
+  // ── Fetch latest Claude response ──────────────────────────────────────────
+  async function fetchLatestResponse() {
+    try {
+      const r = await fetch(`${serverUrl()}/latest_response`, { signal: AbortSignal.timeout(4000) });
+      const data = await r.json();
+      if (data.response && data.frame !== lastShownFrame) {
+        lastShownFrame = data.frame;
+        addResponse(data.response, data.frame);
+      }
+    } catch { /* silent */ }
+  }
+
+  let lastShownFrame = 0;
+
+  function addResponse(text, frame) {
+    // Remove placeholder
+    const placeholder = responsesEl.querySelector('[style*="dashed"]');
+    if (placeholder) placeholder.remove();
+
+    responseCount++;
+    respCount.textContent = responseCount;
+
+    const item = document.createElement('div');
+    item.className = 'response-item new';
+
+    const meta = document.createElement('div');
+    meta.className = 'response-meta';
+    meta.innerHTML = `<span class="frame-num">#${frame}</span><span>${new Date().toLocaleTimeString()}</span>`;
+
+    const body = document.createElement('div');
+    body.className = 'response-text';
+    body.textContent = text;
+
+    item.appendChild(meta);
+    item.appendChild(body);
+    responsesEl.prepend(item);
+
+    // Remove 'new' accent after 3 s
+    setTimeout(() => item.classList.remove('new'), 3000);
+
+    // Limit history in DOM
+    const items = responsesEl.querySelectorAll('.response-item');
+    if (items.length > 50) items[items.length - 1].remove();
+  }
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  function setStatus(s) {
+    dot.className = 'status-dot' + (s === 'live' ? ' live' : '');
+    statusLabel.textContent = s;
+  }
+
+  document.getElementById('btn-start').onclick = () => {
+    if (pollTimer) return;
+    setStatus('connecting…');
+    pollTimer = setInterval(() => {
+      poll();
+      fetchLatestResponse();
+    }, pollMs());
+    poll();
+    fetchLatestResponse();
+  };
+
+  document.getElementById('btn-stop').onclick = () => {
+    clearInterval(pollTimer);
+    pollTimer = null;
+    setStatus('idle');
+  };
+
+  document.getElementById('btn-clear').onclick = () => {
+    responsesEl.innerHTML = '';
+    responseCount = 0;
+    respCount.textContent = 0;
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# ── requirements_laptop.txt ───────────────────────────────────────────────────
+# Install on your LAPTOP:
+#   pip install -r requirements_laptop.txt
+
+flask
+flask-cors
+anthropic
+
+
+# ── requirements_rpi.txt ──────────────────────────────────────────────────────
+# Install on the RASPBERRY PI:
+#   pip install -r requirements_rpi.txt
+#
+# Also install the camera library (choose ONE):
+#   sudo apt install -y python3-picamera2        ← RPi OS Bullseye/Bookworm (recommended)
+#   pip install picamera                         ← legacy, older OS only
+
+requests
