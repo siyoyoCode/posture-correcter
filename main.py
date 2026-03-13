@@ -7,7 +7,7 @@ from rpi_capture import capture_image, send_to_cloud, get_feedback, speak_feedba
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
 def main():
-    button = Button(BUTTON_PIN, pull_up=True)
+    button   = Button(BUTTON_PIN, pull_up=True)
     interval = 1.0 / CAPTURE_FPS
 
     print("[RPi] Ready. Press the button to start an exercise session.")
@@ -20,24 +20,24 @@ def main():
             print("[RPi] Button pressed — starting session!")
             speak_feedback("Starting. Go!")
 
-            # ── Capture + send frames for CAPTURE_DURATION seconds ────────
+            # ── Capture + send frames, collect last coach message ──────────
+            last_message = None
             session_start = time.time()
+
             while time.time() - session_start < CAPTURE_DURATION:
                 t0 = time.time()
 
                 image_b64 = capture_image(cam)
-                send_to_cloud(image_b64)
+                message   = send_to_cloud(image_b64)
+                if message:
+                    last_message = message   # keep the most recent coaching cue
 
                 elapsed = time.time() - t0
                 time.sleep(max(0, interval - elapsed))
 
-            print("[RPi] Session complete — fetching feedback…")
-            speak_feedback("Session complete. Getting your feedback.")
-
-            # ── Fetch and speak feedback ───────────────────────────────────
-            # Small delay to let the backend finish processing the last frame
-            time.sleep(1.5)
-            feedback = get_feedback()
+            # ── Speak the last coach message from Claude ───────────────────
+            print("[RPi] Session complete.")
+            feedback = last_message or "Session complete. Good work!"
             speak_feedback(feedback)
 
             print("[RPi] Ready for next session.")

@@ -4,10 +4,9 @@ rpi_capture.py — Run this ON the Raspberry Pi.
 
 Flow:
   1. Wait for button press → start exercise session
-  2. Capture frames for CAPTURE_DURATION seconds, POST each to cloud backend
-  3. After session ends, fetch latest feedback from backend
-  4. Speak feedback through USB speaker
-  5. Repeat
+  2. Capture frames for CAPTURE_DURATION seconds, POST each to /coach/analyze
+  3. Each response contains a coach_message from Claude — speak the last one
+  4. Repeat
 """
 
 import io
@@ -19,13 +18,15 @@ import subprocess
 from gpiozero import Button
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-BACKEND_URL      = "https://YOUR-APP.onrender.com"   # ← paste your friend's cloud URL here
-EXERCISE         = "squat"
+BACKEND_URL      = "https://YOUR-APP.onrender.com"   # ← your friend's deployed URL
+EXERCISE         = "squat"       # squat | pushup | lunge | bicep_curl | plank
 SESSION_ID       = "rpi-session-1"
-MODE             = "normal"
-CAPTURE_DURATION = 10        # seconds to capture after button press
-CAPTURE_FPS      = 1         # frames per second to send (1 is plenty for pose estimation)
-BUTTON_PIN       = 17        # GPIO pin the button is wired to
+MODE             = "beginner"    # beginner | pro
+TOTAL_SETS       = 3
+REPS_PER_SET     = 10
+CAPTURE_DURATION = 10            # seconds to capture after button press
+CAPTURE_FPS      = 1             # frames per second to send
+BUTTON_PIN       = 17            # GPIO pin the button is wired to
 
 # ── Camera import ──────────────────────────────────────────────────────────────
 try:
@@ -49,55 +50,52 @@ def capture_image(cam) -> str:
     return base64.b64encode(buf.read()).decode()
 
 
-def send_to_cloud(image_b64: str):
-    """POST a frame to the cloud backend for pose analysis."""
+def send_to_cloud(image_b64: str) -> str | None:
+    """
+    POST a frame to /coach/analyze.
+    Returns the coach_message string from Claude, or None on failure.
+    """
     try:
         resp = requests.post(
-            f"{BACKEND_URL}/analyze",
+            f"{BACKEND_URL}/coach/analyze",
             json={
                 "image_b64":  image_b64,
                 "exercise":   EXERCISE,
                 "session_id": SESSION_ID,
                 "mode":       MODE,
+                "plan": {
+                    "total_sets":   TOTAL_SETS,
+                    "reps_per_set": REPS_PER_SET,
+                },
             },
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
-        print(f"[RPi] Frame sent OK — {resp.json()}")
+        data = resp.json()
+
+        coach_message = data.get("coach_message", "")
+        analysis      = data.get("analysis", {})
+        plan_state    = data.get("plan_state", {})
+
+        print(f"[RPi] reps={analysis.get('rep_count')}  state={analysis.get('state')}  "
+              f"set={plan_state.get('current_set')}/{plan_state.get('total_sets')}  "
+              f"coach='{coach_message}'")
+
+        return coach_message or None
+
     except requests.exceptions.ConnectionError:
         print("[RPi] Could not reach backend — skipping frame")
     except Exception as e:
         print(f"[RPi] send_to_cloud error: {e}")
-
-
-def get_feedback() -> str:
-    """Fetch the latest feedback text from the backend."""
-    try:
-        resp = requests.get(f"{BACKEND_URL}/feedback", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        # Try common field names — adjust if your friend uses a different key
-        return (
-            data.get("coach_message")
-            or data.get("feedback")
-            or data.get("message")
-            or str(data)
-        )
-    except Exception as e:
-        print(f"[RPi] get_feedback error: {e}")
-        return "Could not retrieve feedback."
+    return None
 
 
 def speak_feedback(text: str):
     """Speak text aloud through the USB speaker using espeak."""
     print(f"[RPi] Speaking: {text}")
     try:
-        subprocess.run(
-            ["espeak", "-s", "150", "-v", "en", text],
-            check=True,
-        )
+        subprocess.run(["espeak", "-s", "150", "-v", "en", text], check=True)
     except FileNotFoundError:
-        # Fallback: use pyttsx3 if espeak isn't installed
         try:
             import pyttsx3
             engine = pyttsx3.init()
@@ -110,7 +108,6 @@ def speak_feedback(text: str):
 # ── Camera context helper ──────────────────────────────────────────────────────
 
 class Camera:
-    """Simple context manager that works for both picamera2 and picamera."""
     def __init__(self):
         self.cam = None
 
@@ -122,7 +119,7 @@ class Camera:
             )
             self.cam.configure(config)
             self.cam.start()
-            time.sleep(1)  # warm-up
+            time.sleep(1)
         else:
             self.cam = picamera.PiCamera(resolution=(640, 480))
             self.cam.framerate = CAPTURE_FPS
