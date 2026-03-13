@@ -2,7 +2,7 @@
 
 import time
 from gpiozero import Button
-from rpi_capture import capture_image, send_to_cloud, get_feedback, speak_feedback, Camera, CAPTURE_DURATION, CAPTURE_FPS, BUTTON_PIN
+from rpi_capture import capture_image, send_to_cloud, speak_feedback, Camera, CAPTURE_DURATION, CAPTURE_FPS, BUTTON_PIN
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
